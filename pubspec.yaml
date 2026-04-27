@@ -36,6 +36,10 @@ dependencies:
   audio_session: ^0.2.3
   just_audio_background: ^0.0.1-beta.11
   flutter_pcm_sound: ^3.3.3
+
+  # UI
+  google_fonts: ^6.2.1
+
   # State management
   flutter_riverpod: ^2.4.0
 
