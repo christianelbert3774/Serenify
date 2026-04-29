@@ -60,12 +60,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Serenify'),
+        title: Image.asset('assets/image/applogocream.png', width: 130),
         actions: [
           // Theme toggle
           IconButton(
             icon: Icon(
-              themeMode == ThemeMode.dark
+              themeMode == ThemeMode.light
                   ? Icons.light_mode_outlined
                   : Icons.dark_mode_outlined,
             ),

@@ -3,10 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/audio/audio_mixer.dart';
 import '../core/models/soundscape_layer.dart';
 
-// =====================================================
 //  AudioMixer Notifier — reactive wrapper around AudioMixer
-// =====================================================
-
 class AudioMixerNotifier extends ChangeNotifier {
   final AudioMixer _mixer = AudioMixer();
   bool _isInitialized = false;
@@ -62,10 +59,6 @@ class AudioMixerNotifier extends ChangeNotifier {
     await _mixer.dispose();
   }
 }
-
-// =====================================================
-//  Providers
-// =====================================================
 
 /// Provider utama — satu instance AudioMixerNotifier untuk seluruh app
 final audioMixerProvider = ChangeNotifierProvider<AudioMixerNotifier>((ref) {

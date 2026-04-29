@@ -110,14 +110,15 @@ class AudioMixer {
     if (player == null) return;
 
     if (layer.isActive) {
-      // Stop
-      await player.pause();
+      // Update state DULU, baru pause
       _layers[index] = layer.copyWith(isActive: false);
+      await player.pause();
     } else {
-      // Play
-      await player.seek(Duration.zero);
-      await player.play();
+      // Update state DULU, baru play
       _layers[index] = layer.copyWith(isActive: true);
+      await player.seek(Duration.zero);
+      // JANGAN await player.play() — dengan LoopMode.all, Future-nya tidak pernah selesai
+      player.play();
     }
   }
 
