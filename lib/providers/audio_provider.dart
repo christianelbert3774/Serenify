@@ -1,40 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/audio/audio_mixer.dart';
+import '../core/audio/noise_generator.dart';
 import '../core/models/soundscape_layer.dart';
+import '../core/models/preset.dart';
+import '../core/storage/preset_repository.dart';
 
-//  AudioMixer Notifier — reactive wrapper around AudioMixer
 class AudioMixerNotifier extends ChangeNotifier {
   final AudioMixer _mixer = AudioMixer();
   bool _isInitialized = false;
 
-  // === Getters (proxy ke AudioMixer) ===
+  // === Getters ===
   bool get isInitialized => _isInitialized;
-  NoiseType? get activeNoiseType => _mixer.activeNoiseType;
+  FrequencyMode? get activeMode => _mixer.activeMode;
   bool get noiseIsPlaying => _mixer.noiseIsPlaying;
   double get noiseVolume => _mixer.noiseVolume;
+  bool get binauralEnabled => _mixer.binauralEnabled;
+  bool get isPaused => _mixer.isPaused;
+  bool get hasAnyActive => _mixer.hasAnyActive;
+  String? get activePresetName => _mixer.activePresetName;
   List<SoundscapeLayer> get layers => _mixer.layers;
 
-  /// Initialize semua audio resources
   Future<void> init() async {
     await _mixer.init();
     _isInitialized = true;
     notifyListeners();
   }
 
-  // === Noise ===
-  void playNoise(NoiseType type) {
-    _mixer.playNoise(type);
+  // === Frequency mode ===
+  void playMode(FrequencyMode mode) {
+    _mixer.playMode(mode);
     notifyListeners();
   }
 
-  void stopNoise() {
-    _mixer.stopNoise();
+  void stopMode() {
+    _mixer.stopMode();
     notifyListeners();
   }
 
   void setNoiseVolume(double volume) {
     _mixer.setNoiseVolume(volume);
+    notifyListeners();
+  }
+
+  void setBinauralEnabled(bool enabled) {
+    _mixer.setBinauralEnabled(enabled);
     notifyListeners();
   }
 
@@ -49,9 +59,41 @@ class AudioMixerNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  // === Pause / Resume ===
+  Future<void> pauseAll() async {
+    await _mixer.pauseAll();
+    notifyListeners();
+  }
+
+  Future<void> resumeAll() async {
+    await _mixer.resumeAll();
+    notifyListeners();
+  }
+
+  Future<void> togglePause() async {
+    if (_mixer.isPaused) {
+      await resumeAll();
+    } else {
+      await pauseAll();
+    }
+  }
+
+  // === Preset ===
+  Preset capturePreset(String name) => _mixer.capturePreset(name);
+
+  Future<void> applyPreset(Preset preset) async {
+    await _mixer.applyPreset(preset);
+    notifyListeners();
+  }
+
   // === Global ===
   Future<void> stopAll() async {
     await _mixer.stopAll();
+    notifyListeners();
+  }
+
+  Future<void> setMasterVolume(double factor) async {
+    await _mixer.setMasterVolume(factor);
     notifyListeners();
   }
 
@@ -60,12 +102,16 @@ class AudioMixerNotifier extends ChangeNotifier {
   }
 }
 
-/// Provider utama — satu instance AudioMixerNotifier untuk seluruh app
+// === Providers ===
+
 final audioMixerProvider = ChangeNotifierProvider<AudioMixerNotifier>((ref) {
   final notifier = AudioMixerNotifier();
   ref.onDispose(() => notifier.disposeMixer());
   return notifier;
 });
 
-/// Provider untuk theme mode (dark/light)
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.dark);
+
+final presetsProvider = StateProvider<List<Preset>>((ref) {
+  return PresetRepository.getPresets();
+});

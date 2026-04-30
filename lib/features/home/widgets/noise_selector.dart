@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/audio/audio_mixer.dart';
+import '../../../core/audio/noise_generator.dart';
 import '../../../providers/audio_provider.dart';
-import '../../../shared/theme/app_theme.dart';
 
-/// Horizontal noise type selector cards — White / Pink / Brown
+/// Frequency mode selector — Focus / Relax / Sleep / Meditate
 class NoiseSelector extends ConsumerWidget {
   const NoiseSelector({super.key});
 
@@ -16,70 +15,141 @@ class NoiseSelector extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section title
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 12),
           child: Text(
-            'Noise Generator',
+            'Frequency Mode',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
 
-        // Noise type cards
-        Row(
-          children: NoiseType.values.map((type) {
-            final isActive = mixer.activeNoiseType == type;
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: _NoiseCard(
-                  type: type,
-                  isActive: isActive,
-                  onTap: () {
-                    if (isActive) {
-                      mixer.stopNoise();
-                    } else {
-                      mixer.playNoise(type);
-                    }
-                  },
-                ),
-              ),
+        // 2x2 grid of mode cards
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 2.2,
+          children: FrequencyMode.values.map((mode) {
+            final isActive = mixer.activeMode == mode;
+            final params = modeParams[mode]!;
+            return _ModeCard(
+              mode: mode,
+              label: params.label,
+              subtitle: params.subtitle,
+              icon: _iconForMode(mode),
+              color: _colorForMode(mode),
+              isActive: isActive,
+              onTap: () {
+                if (isActive) {
+                  mixer.stopMode();
+                } else {
+                  mixer.playMode(mode);
+                }
+              },
             );
           }).toList(),
         ),
 
-        // Volume slider (visible saat ada noise aktif)
+        // Volume slider + binaural toggle (visible saat ada mode aktif)
         if (mixer.noiseIsPlaying) ...[
-          const SizedBox(height: 12),
-          _NoiseVolumeSlider(
-            volume: mixer.noiseVolume,
-            activeColor: _colorForType(mixer.activeNoiseType!),
-            onChanged: (v) => mixer.setNoiseVolume(v),
+          const SizedBox(height: 14),
+          // Volume slider
+          Row(
+            children: [
+              Icon(Icons.volume_down, size: 20,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+              Expanded(
+                child: SliderTheme(
+                  data: theme.sliderTheme.copyWith(
+                    activeTrackColor: _colorForMode(mixer.activeMode!),
+                    thumbColor: _colorForMode(mixer.activeMode!),
+                  ),
+                  child: Slider(
+                    value: mixer.noiseVolume,
+                    onChanged: (v) => mixer.setNoiseVolume(v),
+                  ),
+                ),
+              ),
+              Icon(Icons.volume_up, size: 20,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          // Binaural toggle
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.headphones, size: 18,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Binaural Enhancement',
+                            style: theme.textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w500)),
+                        Text('Spatial audio · Best with headphones',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                              fontSize: 11,
+                            )),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: mixer.binauralEnabled,
+                    onChanged: (v) => mixer.setBinauralEnabled(v),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ],
     );
   }
 
-  static Color _colorForType(NoiseType type) {
-    return switch (type) {
-      NoiseType.white => AppTheme.noiseWhite,
-      NoiseType.pink => AppTheme.noisePink,
-      NoiseType.brown => AppTheme.noiseBrown,
+  static IconData _iconForMode(FrequencyMode mode) {
+    return switch (mode) {
+      FrequencyMode.focus => Icons.psychology_outlined,
+      FrequencyMode.relax => Icons.spa_outlined,
+      FrequencyMode.sleep => Icons.bedtime_outlined,
+      FrequencyMode.meditate => Icons.self_improvement_outlined,
+    };
+  }
+
+  static Color _colorForMode(FrequencyMode mode) {
+    return switch (mode) {
+      FrequencyMode.focus => const Color(0xFF64B5F6),
+      FrequencyMode.relax => const Color(0xFF81C784),
+      FrequencyMode.sleep => const Color(0xFF9575CD),
+      FrequencyMode.meditate => const Color(0xFFFFB74D),
     };
   }
 }
 
-/// Individual noise card with animated active state
-class _NoiseCard extends StatelessWidget {
-  final NoiseType type;
+class _ModeCard extends StatelessWidget {
+  final FrequencyMode mode;
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _NoiseCard({
-    required this.type,
+  const _ModeCard({
+    required this.mode,
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
     required this.isActive,
     required this.onTap,
   });
@@ -87,14 +157,13 @@ class _NoiseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _colorForType(type);
 
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: isActive ? color.withValues(alpha: 0.15) : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
@@ -103,100 +172,36 @@ class _NoiseCard extends StatelessWidget {
             width: isActive ? 1.5 : 0.5,
           ),
         ),
-        child: Column(
+        child: Row(
           children: [
-            // Animated indicator dot
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isActive ? color : Colors.transparent,
-                border: Border.all(
-                  color: isActive ? color : theme.colorScheme.outline,
-                  width: 1.5,
-                ),
+            Icon(icon, color: isActive ? color : theme.colorScheme.onSurface.withValues(alpha: 0.6), size: 24),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(label,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isActive ? color : null,
+                      )),
+                  Text(subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                        fontSize: 11,
+                      )),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              _label(type),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: isActive ? color : theme.colorScheme.onSurface,
+            if (isActive)
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: color),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              _subtitle(type),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                fontSize: 11,
-              ),
-              textAlign: TextAlign.center,
-            ),
           ],
         ),
       ),
-    );
-  }
-
-  static Color _colorForType(NoiseType type) {
-    return switch (type) {
-      NoiseType.white => AppTheme.noiseWhite,
-      NoiseType.pink => AppTheme.noisePink,
-      NoiseType.brown => AppTheme.noiseBrown,
-    };
-  }
-
-  static String _label(NoiseType type) {
-    return switch (type) {
-      NoiseType.white => 'White',
-      NoiseType.pink => 'Pink',
-      NoiseType.brown => 'Brown',
-    };
-  }
-
-  static String _subtitle(NoiseType type) {
-    return switch (type) {
-      NoiseType.white => 'All frequencies',
-      NoiseType.pink => 'Deep & warm',
-      NoiseType.brown => 'Ultra deep',
-    };
-  }
-}
-
-/// Noise volume slider row
-class _NoiseVolumeSlider extends StatelessWidget {
-  final double volume;
-  final Color activeColor;
-  final ValueChanged<double> onChanged;
-
-  const _NoiseVolumeSlider({
-    required this.volume,
-    required this.activeColor,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Row(
-      children: [
-        Icon(Icons.volume_down, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
-        Expanded(
-          child: SliderTheme(
-            data: theme.sliderTheme.copyWith(
-              activeTrackColor: activeColor,
-              thumbColor: activeColor,
-            ),
-            child: Slider(value: volume, onChanged: onChanged),
-          ),
-        ),
-        Icon(Icons.volume_up, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
-      ],
     );
   }
 }

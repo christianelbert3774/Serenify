@@ -1,44 +1,46 @@
 import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/soundscape_layer.dart';
+import '../models/preset.dart';
 import 'noise_generator.dart';
 
-/// Tipe noise yang tersedia
-enum NoiseType { white, pink, brown }
-
-/// AudioMixer — orchestrator yang mengelola noise engine + soundscape players
+/// AudioMixer — orchestrator: frequency modes + soundscapes + binaural + pause/resume
 class AudioMixer {
   final NoiseGenerator _noiseGenerator = NoiseGenerator();
 
-  // === Noise state ===
-  NoiseType? _activeNoiseType;
+  // === Frequency mode state ===
+  FrequencyMode? _activeMode;
   bool _noiseIsPlaying = false;
   double _noiseVolume = 0.7;
+  bool _binauralEnabled = true; // Default ON
+
+  // === Global state ===
+  bool _isPaused = false;
+  String? _activePresetName;
 
   // === Soundscape state ===
-  /// Map dari soundscape ID ke AudioPlayer instance
   final Map<String, AudioPlayer> _soundscapePlayers = {};
-
-  /// Daftar semua soundscape layers (mutable state)
   List<SoundscapeLayer> _layers = [];
 
   // === Getters ===
-  NoiseType? get activeNoiseType => _activeNoiseType;
+  FrequencyMode? get activeMode => _activeMode;
   bool get noiseIsPlaying => _noiseIsPlaying;
   double get noiseVolume => _noiseVolume;
+  bool get binauralEnabled => _binauralEnabled;
+  bool get isPaused => _isPaused;
+  String? get activePresetName => _activePresetName;
   List<SoundscapeLayer> get layers => List.unmodifiable(_layers);
 
-  /// Initialize mixer — setup PCM engine + prepare soundscape players
+  /// Check if any audio is active
+  bool get hasAnyActive =>
+      _noiseIsPlaying || _layers.any((l) => l.isActive);
+
   Future<void> init() async {
-    // Setup PCM audio untuk noise
-    await FlutterPcmSound.setup(sampleRate: 44100, channelCount: 1);
+    await FlutterPcmSound.setup(sampleRate: 44100, channelCount: 2);
     await FlutterPcmSound.setFeedThreshold(8820);
     FlutterPcmSound.setFeedCallback(_onNoiseFeedCallback);
 
-    // Init soundscape layers dari defaults
     _layers = defaultSoundscapes.map((s) => s.copyWith()).toList();
-
-    // Create AudioPlayer untuk setiap soundscape
     for (final layer in _layers) {
       final player = AudioPlayer();
       await player.setAsset(layer.assetPath);
@@ -49,46 +51,42 @@ class AudioMixer {
   }
 
   // =====================
-  //  NOISE CONTROL
+  //  FREQUENCY MODE
   // =====================
 
-  /// Play noise type tertentu
-  void playNoise(NoiseType type) {
-    _activeNoiseType = type;
+  void playMode(FrequencyMode mode) {
+    _activeMode = mode;
     _noiseIsPlaying = true;
-    // Trigger initial feed
+    _isPaused = false;
+    _noiseGenerator.resetPhases();
     _onNoiseFeedCallback(0);
   }
 
-  /// Stop noise
-  void stopNoise() {
+  void stopMode() {
     _noiseIsPlaying = false;
-    _activeNoiseType = null;
+    _activeMode = null;
   }
 
-  /// Set noise volume (0.0 - 1.0)
   void setNoiseVolume(double volume) {
     _noiseVolume = volume.clamp(0.0, 1.0);
   }
 
-  /// PCM feed callback — generate noise samples on demand
+  void setBinauralEnabled(bool enabled) {
+    _binauralEnabled = enabled;
+    if (enabled) _noiseGenerator.resetPhases();
+  }
+
   void _onNoiseFeedCallback(int remainingFrames) {
-    if (!_noiseIsPlaying || _activeNoiseType == null) return;
+    if (!_noiseIsPlaying || _activeMode == null || _isPaused) return;
 
-    const int framesToGenerate = 4410; // ~100ms
-    List<double> samples;
+    const int framesToGenerate = 4410;
+    final stereoSamples = _noiseGenerator.generateStereoNoise(
+      _activeMode!,
+      framesToGenerate,
+      binauralEnabled: _binauralEnabled,
+    );
 
-    switch (_activeNoiseType!) {
-      case NoiseType.white:
-        samples = _noiseGenerator.generateWhiteNoise(framesToGenerate);
-      case NoiseType.pink:
-        samples = _noiseGenerator.generatePinkNoise(framesToGenerate);
-      case NoiseType.brown:
-        samples = _noiseGenerator.generateBrownNoise(framesToGenerate);
-    }
-
-    // Apply volume ke samples
-    final int16Samples = samples.map((s) {
+    final int16Samples = stereoSamples.map((s) {
       final scaled = (s * _noiseVolume).clamp(-1.0, 1.0);
       return (scaled * 32767).round();
     }).toList();
@@ -96,11 +94,12 @@ class AudioMixer {
     FlutterPcmSound.feed(PcmArrayInt16.fromList(int16Samples));
   }
 
+
+
   // =====================
   //  SOUNDSCAPE CONTROL
   // =====================
 
-  /// Toggle soundscape on/off
   Future<void> toggleSoundscape(String layerId) async {
     final index = _layers.indexWhere((l) => l.id == layerId);
     if (index == -1) return;
@@ -110,19 +109,16 @@ class AudioMixer {
     if (player == null) return;
 
     if (layer.isActive) {
-      // Update state DULU, baru pause
       _layers[index] = layer.copyWith(isActive: false);
       await player.pause();
     } else {
-      // Update state DULU, baru play
       _layers[index] = layer.copyWith(isActive: true);
+      _isPaused = false;
       await player.seek(Duration.zero);
-      // JANGAN await player.play() — dengan LoopMode.all, Future-nya tidak pernah selesai
       player.play();
     }
   }
 
-  /// Set volume untuk satu soundscape layer
   Future<void> setSoundscapeVolume(String layerId, double volume) async {
     final index = _layers.indexWhere((l) => l.id == layerId);
     if (index == -1) return;
@@ -132,20 +128,112 @@ class AudioMixer {
     await _soundscapePlayers[layerId]?.setVolume(clampedVolume);
   }
 
-  /// Stop semua audio (noise + semua soundscape)
-  Future<void> stopAll() async {
-    stopNoise();
+  // =====================
+  //  PAUSE / RESUME
+  // =====================
+
+  Future<void> pauseAll() async {
+    _isPaused = true;
     for (int i = 0; i < _layers.length; i++) {
       if (_layers[i].isActive) {
         await _soundscapePlayers[_layers[i].id]?.pause();
-        _layers[i] = _layers[i].copyWith(isActive: false);
       }
     }
   }
 
-  /// Dispose semua resources
+  Future<void> resumeAll() async {
+    _isPaused = false;
+    // Resume noise
+    if (_noiseIsPlaying && _activeMode != null) {
+      _onNoiseFeedCallback(0);
+    }
+    // Resume soundscapes
+    for (int i = 0; i < _layers.length; i++) {
+      if (_layers[i].isActive) {
+        _soundscapePlayers[_layers[i].id]?.play();
+      }
+    }
+  }
+
+  // =====================
+  //  PRESET
+  // =====================
+
+  Preset capturePreset(String name) {
+    final activeSoundscapes = <String, double>{};
+    for (final layer in _layers) {
+      if (layer.isActive) {
+        activeSoundscapes[layer.id] = layer.volume;
+      }
+    }
+    return Preset(
+      name: name,
+      noiseType: _activeMode?.name,
+      noiseVolume: _noiseVolume,
+      activeSoundscapes: activeSoundscapes,
+      binauralEnabled: _binauralEnabled,
+    );
+  }
+
+  Future<void> applyPreset(Preset preset) async {
+    await stopAll();
+    _activePresetName = preset.name;
+
+    // Apply frequency mode
+    if (preset.noiseType != null) {
+      final mode = FrequencyMode.values.firstWhere(
+        (m) => m.name == preset.noiseType,
+        orElse: () => FrequencyMode.relax,
+      );
+      _noiseVolume = preset.noiseVolume;
+      _binauralEnabled = preset.binauralEnabled;
+      playMode(mode);
+    }
+
+    // Apply soundscapes
+    for (final entry in preset.activeSoundscapes.entries) {
+      final index = _layers.indexWhere((l) => l.id == entry.key);
+      if (index == -1) continue;
+      final player = _soundscapePlayers[entry.key];
+      if (player == null) continue;
+
+      await player.setVolume(entry.value);
+      _layers[index] = _layers[index].copyWith(isActive: true, volume: entry.value);
+      await player.seek(Duration.zero);
+      player.play();
+    }
+  }
+
+  // =====================
+  //  GLOBAL
+  // =====================
+
+  Future<void> stopAll() async {
+    stopMode();
+    _activePresetName = null;
+    _isPaused = false;
+    for (int i = 0; i < _layers.length; i++) {
+      if (_layers[i].isActive) {
+        _layers[i] = _layers[i].copyWith(isActive: false);
+        await _soundscapePlayers[_layers[i].id]?.pause();
+      }
+    }
+  }
+
+  Future<void> setMasterVolume(double factor) async {
+    _noiseVolume = (_noiseVolume * factor).clamp(0.0, 1.0);
+    for (int i = 0; i < _layers.length; i++) {
+      if (_layers[i].isActive) {
+        final newVol = (_layers[i].volume * factor).clamp(0.0, 1.0);
+        _layers[i] = _layers[i].copyWith(volume: newVol);
+        await _soundscapePlayers[_layers[i].id]?.setVolume(newVol);
+      }
+    }
+  }
+
   Future<void> dispose() async {
-    stopNoise();
+    stopMode();
+
     FlutterPcmSound.release();
     for (final player in _soundscapePlayers.values) {
       await player.dispose();

@@ -22,10 +22,6 @@ class AppTheme {
   static const _lightAccent = Color(0xFF5B63D3);
   static const _lightAccentSoft = Color(0xFFE8E7F5);
 
-  // === NOISE COLORS (shared) ===
-  static const noiseWhite = Color(0xFF90A4AE);
-  static const noisePink = Color(0xFFE57399);
-  static const noiseBrown = Color(0xFF8D6E63);
 
   // =============================
   //  DARK THEME

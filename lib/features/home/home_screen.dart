@@ -103,28 +103,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildStopAllButton(ThemeData theme, AudioMixerNotifier mixer) {
-    final hasAnyActive = mixer.noiseIsPlaying || mixer.layers.any((l) => l.isActive);
+    return Column(
+      children: [
+        // Pause / Resume button
+        if (mixer.hasAnyActive)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => mixer.togglePause(),
+                icon: Icon(
+                  mixer.isPaused ? Icons.play_arrow : Icons.pause,
+                  size: 20,
+                ),
+                label: Text(mixer.isPaused ? 'Resume' : 'Pause'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ),
 
-    return SizedBox(
-      width: double.infinity,
-      child: AnimatedOpacity(
-        opacity: hasAnyActive ? 1.0 : 0.4,
-        duration: const Duration(milliseconds: 200),
-        child: ElevatedButton.icon(
-          onPressed: hasAnyActive ? () => mixer.stopAll() : null,
-          icon: const Icon(Icons.stop_circle_outlined, size: 20),
-          label: const Text('Stop All'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.shade400,
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: theme.colorScheme.surface,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+        // Stop all button
+        SizedBox(
+          width: double.infinity,
+          child: AnimatedOpacity(
+            opacity: mixer.hasAnyActive ? 1.0 : 0.4,
+            duration: const Duration(milliseconds: 200),
+            child: ElevatedButton.icon(
+              onPressed: mixer.hasAnyActive ? () => mixer.stopAll() : null,
+              icon: const Icon(Icons.stop_circle_outlined, size: 20),
+              label: const Text('Stop All'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade400,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: theme.colorScheme.surface,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
