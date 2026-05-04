@@ -203,7 +203,6 @@ class _PresetTile extends ConsumerWidget {
     if (preset.activeSoundscapes.isNotEmpty) {
       parts.add('${preset.activeSoundscapes.length} soundscape(s)');
     }
-    if (preset.binauralEnabled) parts.add('binaural');
     if (parts.isEmpty) parts.add('Empty preset');
     return parts.join(' · ');
   }

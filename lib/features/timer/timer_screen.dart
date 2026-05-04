@@ -164,36 +164,63 @@ class TimerScreen extends ConsumerWidget {
   }
 
   void _showCustomTimerDialog(BuildContext context, WidgetRef ref) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Custom Timer'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            hintText: 'Duration in minutes...',
-            border: OutlineInputBorder(),
+  final controller = TextEditingController();
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true, // KUNCI: biar sheet bisa resize saat keyboard muncul
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(ctx).viewInsets.bottom + 24, // naik sesuai keyboard
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min, // KUNCI: jangan full height
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Custom Timer',
+            style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              hintText: 'Duration in minutes...',
+              border: OutlineInputBorder(),
+            ),
           ),
-          FilledButton(
-            onPressed: () {
-              final minutes = int.tryParse(controller.text.trim());
-              if (minutes == null || minutes <= 0) return;
-              ref.read(timerProvider).startTimer(Duration(minutes: minutes));
-              Navigator.pop(ctx);
-            },
-            child: const Text('Start'),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: () {
+                  final minutes = int.tryParse(controller.text.trim());
+                  if (minutes == null || minutes <= 0) return;
+                  ref.read(timerProvider).startTimer(Duration(minutes: minutes));
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Start'),
+              ),
+            ],
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

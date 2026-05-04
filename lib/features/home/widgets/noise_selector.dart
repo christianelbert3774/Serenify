@@ -54,10 +54,9 @@ class NoiseSelector extends ConsumerWidget {
           }).toList(),
         ),
 
-        // Volume slider + binaural toggle (visible saat ada mode aktif)
+        // Volume slider (visible when mode is active)
         if (mixer.noiseIsPlaying) ...[
           const SizedBox(height: 14),
-          // Volume slider
           Row(
             children: [
               Icon(Icons.volume_down, size: 20,
@@ -77,39 +76,6 @@ class NoiseSelector extends ConsumerWidget {
               Icon(Icons.volume_up, size: 20,
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
             ],
-          ),
-          const SizedBox(height: 4),
-          // Binaural toggle
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Row(
-                children: [
-                  Icon(Icons.headphones, size: 18,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Binaural Enhancement',
-                            style: theme.textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w500)),
-                        Text('Spatial audio · Best with headphones',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-                              fontSize: 11,
-                            )),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: mixer.binauralEnabled,
-                    onChanged: (v) => mixer.setBinauralEnabled(v),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ],

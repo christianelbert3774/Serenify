@@ -34,8 +34,10 @@ dependencies:
   # Core audio
   just_audio: ^0.10.5
   audio_session: ^0.2.3
-  just_audio_background: ^0.0.1-beta.11
   flutter_pcm_sound: ^3.3.3
+
+  # Notification (preset only)
+  flutter_local_notifications: ^17.2.4
 
   # UI
   google_fonts: ^6.2.1
