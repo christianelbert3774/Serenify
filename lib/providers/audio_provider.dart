@@ -23,20 +23,61 @@ class AudioMixerNotifier extends ChangeNotifier {
   Future<void> init() async {
     await _mixer.init();
     await NotificationService.init();
-    // Wire notification buttons → mixer actions
-    NotificationService.onPause  = () => togglePause();
-    NotificationService.onStop   = () => stopAll();
+
+    // Wire notification action buttons to mixer
+    NotificationService.onPause = () => togglePause();
+    NotificationService.onStop  = () => stopAll();
+
     _isInitialized = true;
     notifyListeners();
   }
 
+  // ── Notification helpers ────────────────────────────────────────────────
+
+  /// Builds a human-readable title from whatever is currently active.
+  String _notifTitle() {
+    // Preset takes priority
+    if (_mixer.activePresetName != null) return _mixer.activePresetName!;
+
+    final parts = <String>[];
+
+    // Active frequency mode
+    if (_mixer.activeMode != null) {
+      final n = _mixer.activeMode!.name;
+      parts.add(n[0].toUpperCase() + n.substring(1));
+    }
+
+    // Active soundscapes
+    final active = _mixer.layers.where((l) => l.isActive).toList();
+    if (active.length == 1) {
+      parts.add(active.first.name);
+    } else if (active.length > 1) {
+      parts.add('${active.length} Soundscapes');
+    }
+
+    return parts.isEmpty ? 'Serenify' : parts.join(' + ');
+  }
+
+  /// Show or update notification if anything is playing; dismiss if nothing.
+  Future<void> _syncNotif() async {
+    if (_mixer.hasAnyActive) {
+      await NotificationService.show(_notifTitle(), paused: _mixer.isPaused);
+    } else {
+      await NotificationService.dismiss();
+    }
+  }
+
+  // ── Frequency mode ──────────────────────────────────────────────────────
+
   void playMode(FrequencyMode mode) {
     _mixer.playMode(mode);
+    _syncNotif();
     notifyListeners();
   }
 
   void stopMode() {
     _mixer.stopMode();
+    _syncNotif();
     notifyListeners();
   }
 
@@ -45,8 +86,11 @@ class AudioMixerNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Soundscape ──────────────────────────────────────────────────────────
+
   Future<void> toggleSoundscape(String layerId) async {
     await _mixer.toggleSoundscape(layerId);
+    await _syncNotif();
     notifyListeners();
   }
 
@@ -55,19 +99,17 @@ class AudioMixerNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Pause / Resume ──────────────────────────────────────────────────────
+
   Future<void> pauseAll() async {
     await _mixer.pauseAll();
-    if (_mixer.activePresetName != null) {
-      await NotificationService.show(_mixer.activePresetName!, paused: true);
-    }
+    await _syncNotif();
     notifyListeners();
   }
 
   Future<void> resumeAll() async {
     await _mixer.resumeAll();
-    if (_mixer.activePresetName != null) {
-      await NotificationService.show(_mixer.activePresetName!, paused: false);
-    }
+    await _syncNotif();
     notifyListeners();
   }
 
@@ -75,13 +117,17 @@ class AudioMixerNotifier extends ChangeNotifier {
     _mixer.isPaused ? await resumeAll() : await pauseAll();
   }
 
+  // ── Preset ──────────────────────────────────────────────────────────────
+
   Preset capturePreset(String name) => _mixer.capturePreset(name);
 
   Future<void> applyPreset(Preset preset) async {
     await _mixer.applyPreset(preset);
-    await NotificationService.show(preset.name, paused: false);
+    await _syncNotif();
     notifyListeners();
   }
+
+  // ── Global ──────────────────────────────────────────────────────────────
 
   Future<void> stopAll() async {
     await _mixer.stopAll();
@@ -99,6 +145,8 @@ class AudioMixerNotifier extends ChangeNotifier {
     await _mixer.dispose();
   }
 }
+
+// ── Providers ───────────────────────────────────────────────────────────────
 
 final audioMixerProvider = ChangeNotifierProvider<AudioMixerNotifier>((ref) {
   final n = AudioMixerNotifier();
