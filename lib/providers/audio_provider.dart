@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import '../core/audio/audio_mixer.dart';
 import '../core/audio/noise_generator.dart';
 import '../core/models/soundscape_layer.dart';
 import '../core/models/preset.dart';
+import '../core/models/custom_audio.dart';
 import '../core/storage/preset_repository.dart';
+import '../core/storage/custom_audio_repository.dart';
 import '../core/services/notification_service.dart';
 
 class AudioMixerNotifier extends ChangeNotifier {
@@ -19,6 +22,10 @@ class AudioMixerNotifier extends ChangeNotifier {
   bool get hasAnyActive => _mixer.hasAnyActive;
   String? get activePresetName => _mixer.activePresetName;
   List<SoundscapeLayer> get layers => _mixer.layers;
+  List<CustomAudio> get customAudios => _mixer.customAudios;
+
+  bool isCustomActive(String id) => _mixer.isCustomActive(id);
+  double customVolume(String id) => _mixer.customVolume(id);
 
   Future<void> init() async {
     await _mixer.init();
@@ -27,6 +34,10 @@ class AudioMixerNotifier extends ChangeNotifier {
     // Wire notification action buttons to mixer
     NotificationService.onPause = () => togglePause();
     NotificationService.onStop  = () => stopAll();
+
+    // Load custom audio from storage
+    final customAudios = CustomAudioRepository.getAll();
+    await _mixer.loadCustomAudios(customAudios);
 
     _isInitialized = true;
     notifyListeners();
@@ -53,6 +64,16 @@ class AudioMixerNotifier extends ChangeNotifier {
       parts.add(active.first.name);
     } else if (active.length > 1) {
       parts.add('${active.length} Soundscapes');
+    }
+
+    // Active custom audio
+    final activeCustom = _mixer.customAudios
+        .where((a) => _mixer.isCustomActive(a.id))
+        .toList();
+    if (activeCustom.length == 1) {
+      parts.add(activeCustom.first.name);
+    } else if (activeCustom.length > 1) {
+      parts.add('${activeCustom.length} Custom');
     }
 
     return parts.isEmpty ? 'Serenify' : parts.join(' + ');
@@ -96,6 +117,46 @@ class AudioMixerNotifier extends ChangeNotifier {
 
   Future<void> setSoundscapeVolume(String layerId, double volume) async {
     await _mixer.setSoundscapeVolume(layerId, volume);
+    notifyListeners();
+  }
+
+  // ── Custom Audio ────────────────────────────────────────────────────────
+
+  /// Opens file picker, imports selected audio file to private storage,
+  /// and loads it into the mixer.
+  Future<void> importCustomAudio() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.audio,
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.single.path;
+    if (path == null) return;
+
+    // Copy to private storage + save to Hive
+    await CustomAudioRepository.importFile(path);
+
+    // Reload all custom audio into mixer
+    final all = CustomAudioRepository.getAll();
+    await _mixer.loadCustomAudios(all);
+    notifyListeners();
+  }
+
+  Future<void> toggleCustomAudio(String id) async {
+    await _mixer.toggleCustomAudio(id);
+    await _syncNotif();
+    notifyListeners();
+  }
+
+  Future<void> setCustomVolume(String id, double volume) async {
+    await _mixer.setCustomVolume(id, volume);
+    notifyListeners();
+  }
+
+  Future<void> deleteCustomAudio(CustomAudio audio) async {
+    await _mixer.removeCustomAudio(audio.id);
+    await CustomAudioRepository.delete(audio);
+    await _syncNotif();
     notifyListeners();
   }
 

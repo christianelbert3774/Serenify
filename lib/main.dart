@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'core/storage/preset_repository.dart';
+import 'core/storage/custom_audio_repository.dart';
 import 'app.dart';
 
 void main() async {
@@ -10,6 +11,7 @@ void main() async {
   // Init Hive for local storage
   await Hive.initFlutter();
   await PresetRepository.init();
+  await CustomAudioRepository.init();
 
   runApp(const ProviderScope(child: SerenifyApp()));
-}
+}

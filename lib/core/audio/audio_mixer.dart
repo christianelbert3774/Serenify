@@ -2,6 +2,7 @@ import 'package:flutter_pcm_sound/flutter_pcm_sound.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/soundscape_layer.dart';
 import '../models/preset.dart';
+import '../models/custom_audio.dart';
 import 'noise_generator.dart';
 
 class AudioMixer {
@@ -13,8 +14,15 @@ class AudioMixer {
   bool _isPaused = false;
   String? _activePresetName;
 
+  // Built-in soundscapes
   final Map<String, AudioPlayer> _soundscapePlayers = {};
   List<SoundscapeLayer> _layers = [];
+
+  // Custom audio
+  final Map<String, AudioPlayer> _customPlayers = {};
+  final Map<String, bool> _customActive = {};
+  final Map<String, double> _customVolume = {};
+  List<CustomAudio> _customAudios = [];
 
   FrequencyMode? get activeMode => _activeMode;
   bool get noiseIsPlaying => _noiseIsPlaying;
@@ -22,7 +30,15 @@ class AudioMixer {
   bool get isPaused => _isPaused;
   String? get activePresetName => _activePresetName;
   List<SoundscapeLayer> get layers => List.unmodifiable(_layers);
-  bool get hasAnyActive => _noiseIsPlaying || _layers.any((l) => l.isActive);
+  List<CustomAudio> get customAudios => List.unmodifiable(_customAudios);
+
+  bool get hasAnyActive =>
+      _noiseIsPlaying ||
+      _layers.any((l) => l.isActive) ||
+      _customActive.values.any((a) => a);
+
+  bool isCustomActive(String id) => _customActive[id] ?? false;
+  double customVolume(String id) => _customVolume[id] ?? 0.5;
 
   Future<void> init() async {
     await FlutterPcmSound.setup(sampleRate: 44100, channelCount: 2);
@@ -94,12 +110,78 @@ class AudioMixer {
     await _soundscapePlayers[layerId]?.setVolume(v);
   }
 
+  // --- Custom Audio ---
+
+  /// Load all custom audio files from repository data.
+  Future<void> loadCustomAudios(List<CustomAudio> audios) async {
+    // Dispose players that no longer exist
+    final newIds = audios.map((a) => a.id).toSet();
+    for (final id in _customPlayers.keys.toList()) {
+      if (!newIds.contains(id)) {
+        await _customPlayers[id]?.dispose();
+        _customPlayers.remove(id);
+        _customActive.remove(id);
+        _customVolume.remove(id);
+      }
+    }
+
+    // Add new players
+    for (final audio in audios) {
+      if (_customPlayers.containsKey(audio.id)) continue;
+      try {
+        final player = AudioPlayer();
+        await player.setFilePath(audio.filePath);
+        await player.setLoopMode(LoopMode.all);
+        await player.setVolume(0.5);
+        _customPlayers[audio.id] = player;
+        _customActive[audio.id] = false;
+        _customVolume[audio.id] = 0.5;
+      } catch (e) {
+        // File corrupt or missing — skip gracefully
+      }
+    }
+    _customAudios = List.of(audios);
+  }
+
+  Future<void> toggleCustomAudio(String id) async {
+    final player = _customPlayers[id];
+    if (player == null) return;
+    final active = _customActive[id] ?? false;
+
+    if (active) {
+      await player.pause();
+      _customActive[id] = false;
+    } else {
+      _isPaused = false;
+      await player.seek(Duration.zero);
+      player.play();
+      _customActive[id] = true;
+    }
+  }
+
+  Future<void> setCustomVolume(String id, double volume) async {
+    final v = volume.clamp(0.0, 1.0);
+    _customVolume[id] = v;
+    await _customPlayers[id]?.setVolume(v);
+  }
+
+  Future<void> removeCustomAudio(String id) async {
+    await _customPlayers[id]?.dispose();
+    _customPlayers.remove(id);
+    _customActive.remove(id);
+    _customVolume.remove(id);
+    _customAudios.removeWhere((a) => a.id == id);
+  }
+
   // --- Pause / Resume ---
 
   Future<void> pauseAll() async {
     _isPaused = true;
     for (final l in _layers) {
       if (l.isActive) await _soundscapePlayers[l.id]?.pause();
+    }
+    for (final entry in _customActive.entries) {
+      if (entry.value) await _customPlayers[entry.key]?.pause();
     }
   }
 
@@ -109,18 +191,29 @@ class AudioMixer {
     for (final l in _layers) {
       if (l.isActive) _soundscapePlayers[l.id]?.play();
     }
+    for (final entry in _customActive.entries) {
+      if (entry.value) _customPlayers[entry.key]?.play();
+    }
   }
 
   // --- Preset ---
 
   Preset capturePreset(String name) {
+    final map = <String, double>{};
+    for (final l in _layers.where((l) => l.isActive)) {
+      map[l.id] = l.volume;
+    }
+    // Include active custom audio in preset
+    for (final a in _customAudios) {
+      if (_customActive[a.id] == true) {
+        map[a.id] = _customVolume[a.id] ?? 0.5;
+      }
+    }
     return Preset(
       name: name,
       noiseType: _activeMode?.name,
       noiseVolume: _noiseVolume,
-      activeSoundscapes: {
-        for (final l in _layers.where((l) => l.isActive)) l.id: l.volume,
-      },
+      activeSoundscapes: map,
       binauralEnabled: false,
     );
   }
@@ -139,14 +232,27 @@ class AudioMixer {
     }
 
     for (final entry in preset.activeSoundscapes.entries) {
+      // Try built-in soundscape first
       final index = _layers.indexWhere((l) => l.id == entry.key);
-      if (index == -1) continue;
-      final player = _soundscapePlayers[entry.key];
-      if (player == null) continue;
-      await player.setVolume(entry.value);
-      _layers[index] = _layers[index].copyWith(isActive: true, volume: entry.value);
-      await player.seek(Duration.zero);
-      player.play();
+      if (index != -1) {
+        final player = _soundscapePlayers[entry.key];
+        if (player == null) continue;
+        await player.setVolume(entry.value);
+        _layers[index] = _layers[index].copyWith(isActive: true, volume: entry.value);
+        await player.seek(Duration.zero);
+        player.play();
+        continue;
+      }
+      // Try custom audio
+      if (_customPlayers.containsKey(entry.key)) {
+        final player = _customPlayers[entry.key]!;
+        await player.setVolume(entry.value);
+        _customActive[entry.key] = true;
+        _customVolume[entry.key] = entry.value;
+        await player.seek(Duration.zero);
+        player.play();
+      }
+      // else: audio was deleted — skip gracefully
     }
   }
 
@@ -162,6 +268,13 @@ class AudioMixer {
         await _soundscapePlayers[_layers[i].id]?.pause();
       }
     }
+    // Stop custom audio
+    for (final id in _customActive.keys.toList()) {
+      if (_customActive[id] == true) {
+        _customActive[id] = false;
+        await _customPlayers[id]?.pause();
+      }
+    }
   }
 
   Future<void> setMasterVolume(double factor) async {
@@ -173,6 +286,13 @@ class AudioMixer {
         await _soundscapePlayers[_layers[i].id]?.setVolume(v);
       }
     }
+    for (final id in _customActive.keys) {
+      if (_customActive[id] == true) {
+        final v = ((_customVolume[id] ?? 0.5) * factor).clamp(0.0, 1.0);
+        _customVolume[id] = v;
+        await _customPlayers[id]?.setVolume(v);
+      }
+    }
   }
 
   Future<void> dispose() async {
@@ -182,5 +302,9 @@ class AudioMixer {
       await p.dispose();
     }
     _soundscapePlayers.clear();
+    for (final p in _customPlayers.values) {
+      await p.dispose();
+    }
+    _customPlayers.clear();
   }
 }

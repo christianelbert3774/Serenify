@@ -9,8 +9,8 @@ class AppTheme {
   static const _darkBorder = Color(0xFF30363D);
   static const _darkTextPrimary = Color(0xFFE6EDF3);
   static const _darkTextSecondary = Color(0xFF8B949E);
-  static const _darkAccent = Color(0xFF7C8AFF);
-  static const _darkAccentSoft = Color(0xFF2D3250);
+  static const _darkAccent = Color(0xFF42A5F5);    // Light Blue 400
+  static const _darkAccentSoft = Color(0xFF0D2A4A); // Deep blue-tinted surface
 
   // === LIGHT THEME COLOR PALETTE ===
   // Warm cream/soft white — gentle, airy
@@ -19,8 +19,8 @@ class AppTheme {
   static const _lightBorder = Color(0xFFE0DDD5);
   static const _lightTextPrimary = Color(0xFF1A1A2E);
   static const _lightTextSecondary = Color(0xFF6B6B7B);
-  static const _lightAccent = Color(0xFF5B63D3);
-  static const _lightAccentSoft = Color(0xFFE8E7F5);
+  static const _lightAccent = Color(0xFF1E88E5);    // Blue 600
+  static const _lightAccentSoft = Color(0xFFE3F2FD); // Blue 50 (very soft)
 
 
   // =============================
